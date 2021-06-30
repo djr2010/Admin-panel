@@ -1,9 +1,8 @@
 const gulp = require("gulp"),
-	  sass = require("gulp-sass"),
-	  webpack = require("webpack-stream")
-;
+	  sass = require("gulp-sass")(require("node-sass")),
+	  webpack = require("webpack-stream");
 
-const dist = '/OpenServer-538/domains/react-admin/admin';
+const dist = '/OpenServer-539/domains/react-admin/admin';
 
 gulp.task('copy-html', () => {
 	return gulp.src('./app/src/index.html')

@@ -3,10 +3,10 @@ declare(strict_types=1);
 // Декодируем полученные в формате json данные
 $_POST = json_decode(file_get_contents("php://input"), true);
 
-$newFile = "../../" . $_POST["name"] . ".html";
+$file = "../../" . $_POST["name"];
 
-if (file_exists($newFile)) {
-	header("HTTP/1.0 400 Bad Request");
+if (file_exists($file)) {
+	unlink($file);
 } else {
-	fopen($newFile, "w");
+	header("HTTP/1.0 400 Bad Request");
 }
