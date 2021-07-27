@@ -8,6 +8,9 @@ import Spinner from "../spinner";
 import ConfirmModal from "../confirm-modal";
 import ChooseModal from "../choose-modal";
 import Panel from "../panel";
+import EditorMeta from "../editor-meta";
+import EditorImages from "../editor-images";
+import Login from "../login";
 
 export default class Editor extends Component {
 	constructor() {
@@ -17,30 +20,81 @@ export default class Editor extends Component {
 			pageList: [],
 			backupsList: [],
 			newPageName: "",
-			loading: true
+			loading: true,
+			auth: false,
+			loginError: false,
+			loginLengthError: false
 		};
 		
 		this.isLoading = this.isLoading.bind(this);
 		this.isLoaded = this.isLoaded.bind(this);
 		this.save = this.save.bind(this);
 		this.init = this.init.bind(this);
+		this.login = this.login.bind(this);
+		this.logout = this.logout.bind(this);
 		this.restoreBackup = this.restoreBackup.bind(this);
 		
 	}
 	
 	componentDidMount() {
-		this.init(null, this.currentPage);
+		this.checkAuth();
+	}
+	
+	componentDidUpdate(prevProps, prevState) {
+		if (this.state.auth !== prevState.auth) {
+			this.init(null, this.currentPage);
+		}
+	}
+	
+	checkAuth() {
+		axios
+			.get("./api/checkAuth.php")
+			.then(res => {
+				this.setState({
+					auth: res.data.auth
+				});
+			});
+	}
+	
+	login(pass) {
+		if (pass.length > 3) {
+			axios
+				.post("./api/login.php", {"password": root})
+				.then(res => {
+					this.setState({
+						auth: res.data.auth,
+						loginError: !res.data.auth,
+						loginLengthError: false
+					});
+				});
+		} else {
+			this.setState({
+				loginError: false,
+				loginLengthError: true
+			});
+		}
+	}
+	
+	logout() {
+		axios
+			.get("./api/logout.php")
+			.then(() => {
+				window.location.replace("/");
+			});
 	}
 	
 	init(event, page) {
 		if (event) {
 			event.preventDefault();
 		}
-		this.isLoading();
-		this.iframe = document.querySelector('iframe');
-		this.open(page, this.isLoaded);
-		this.loadPageList();
-		this.loadBackupsList();
+		
+		if (this.state.auth) {
+			this.isLoading();
+			this.iframe = document.querySelector('iframe');
+			this.open(page, this.isLoaded);
+			this.loadPageList();
+			this.loadBackupsList();
+		}
 	}
 	
 	open(page, cb) {
@@ -49,6 +103,7 @@ export default class Editor extends Component {
 			.get(`../${page}?rnd=${Math.random()}`)
 			.then(res => DOMHelper.parseStrToDOM(res.data))
 			.then(DOMHelper.wrapTextNodes)
+			.then(DOMHelper.wrapImages)
 			.then(dom => {
 				this.virtualDom = dom;
 				return dom;
@@ -64,15 +119,16 @@ export default class Editor extends Component {
 		this.loadBackupsList();
 	}
 	
-	async save(onSuccess, onError) {
+	async save() {
 		this.isLoading();
 		const newDom = this.virtualDom.cloneNode(this.virtualDom);
 		DOMHelper.unwrapTextNodes(newDom);
+		DOMHelper.unwrapImages(newDom);
 		const html = DOMHelper.serializeDOMToString(newDom);
 		await axios
 			.post("./api/savePage.php", {pageName: this.currentPage, html})
-			.then(onSuccess)
-			.catch(onError)
+			.then(() => this.showNotifications("Успешно сохранено", "success"))
+			.catch(() => this.showNotifications("Ошибка сохранения", "danger"))
 			.finally(this.isLoaded)
 		;
 		
@@ -85,6 +141,13 @@ export default class Editor extends Component {
 			const virtualElement = this.virtualDom.body.querySelector(`[nodeid="${id}"]`);
 			
 			new EditorText(element, virtualElement);
+		});
+		
+		this.iframe.contentDocument.body.querySelectorAll(["editableimgid"]).forEach(element => {
+			const id = element.getAttribute("editableimgid");
+			const virtualElement = this.virtualDom.body.querySelector(`[editableimgid="${id}"]`);
+			
+			new EditorImages(element, virtualElement, this.isLoading, this.isLoaded, this.showNotifications);
 		});
 	}
 	
@@ -99,8 +162,17 @@ export default class Editor extends Component {
 				outline: 3px solid red;
 				outline-offset: 8px;
 			}
+			[editableimgid]:hover {
+				outline: 3px solid orange;
+				outline-offset: 8px;
+			}
+			
 		`;
 		this.iframe.contentDocument.head.appendChild(style);
+	}
+	
+	showNotifications(message, status) {
+		UIkit.notification({message, status});
 	}
 	
 	loadPageList() {
@@ -112,10 +184,11 @@ export default class Editor extends Component {
 	loadBackupsList() {
 		axios
 			.get("./backups/backups.json")
-			.then(res => this.setState({backupsList: res.data.filter(backup => {
-				return backup.page === this.currentPage;
-			})
-		}));
+			.then(res => this.setState({
+				backupsList: res.data.filter(backup => {
+					return backup.page === this.currentPage;
+				})
+			}));
 	}
 	
 	restoreBackup(event, backup) {
@@ -147,24 +220,52 @@ export default class Editor extends Component {
 	}
 	
 	render() {
-		const {loading, pageList, backupsList} = this.state;
+		const {loading, pageList, backupsList, auth, loginError, loginLengthError} = this.state;
 		const modal = true;
 		let spinner;
 		
 		loading ? spinner = <Spinner active/> : spinner = <Spinner/>
 		
+		if (!auth) {
+			return <Login login={this.login} lengthErr={loginLengthError} logErr={loginError}/>;
+		}
+		
 		return (
 			<>
+				<Login/>
 				<iframe src="" frameBorder="0"></iframe>
+				<input id="img-upload" type="file" accept="image/*" style={{display: 'none'}}></input>
 				
 				{spinner}
 				
 				<Panel/>
 				
-				<ConfirmModal modal={modal} target={"modal-save"} method={this.save}/>
+				<ConfirmModal
+					modal={modal}
+					target={"modal-save"}
+					method={this.save}
+					text={{
+						title: "Saving",
+						descr: "Will You save changes?",
+						btn: "Publish"
+					}}/>
+				
+				<ConfirmModal
+					modal={modal}
+					target={"modal-logout"}
+					method={this.logout}
+					text={{
+						title: "Exit",
+						descr: "Will You exit?",
+						btn: "Exit"
+					}}/>
+				
 				<ChooseModal modal={modal} target={"modal-open"} data={pageList} redirect={this.init}/>
 				<ChooseModal modal={modal} target={"modal-backup"} data={backupsList} redirect={this.restoreBackup}/>
 				
+				{this.virtualDom ?
+					<EditorMeta modal={modal} target={"modal-meta"} virtualDom={this.virtualDom}/> : false}
+			
 			</>
 		);
 	}

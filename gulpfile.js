@@ -1,20 +1,25 @@
+// eslint-disable-next-line no-undef
 const gulp = require("gulp"),
-	  sass = require("gulp-sass")(require("node-sass")),
-	  webpack = require("webpack-stream");
+	sass = require("gulp-sass")(require("node-sass")),
+	webpack = require("webpack-stream"),
+	autoprefixer = require("autoprefixer"),
+	cleanCss = require("gulp-clean-css"),
+	postcss = require("gulp-postcss");
 
-const dist = '/OpenServer-539/domains/react-admin/admin';
+const dist = "/SERVERS/OpenServer-539/domains/react-admin/admin";
+const prod = "./build/";
 
-gulp.task('copy-html', () => {
-	return gulp.src('./app/src/index.html')
+gulp.task("copy-html", () => {
+	return gulp.src("./app/src/index.html")
 		.pipe(gulp.dest(dist));
 });
 
 gulp.task("build-js", () => {
 	return gulp.src("./app/src/main.js")
 		.pipe(webpack({
-			mode: 'development',
+			mode: "development",
 			output: {
-				filename: 'script.js'
+				filename: "script.js"
 			},
 			watch: false,
 			devtool: "source-map",
@@ -24,9 +29,9 @@ gulp.task("build-js", () => {
 						test: /\.m?js$/,
 						exclude: /(node_modules|bower_components)/,
 						use: {
-							loader: 'babel-loader',
+							loader: "babel-loader",
 							options: {
-								presets: [['@babel/preset-env', {
+								presets: [["@babel/preset-env", {
 									debug: true,
 									corejs: 3,
 									useBuiltIns: "usage"
@@ -42,30 +47,79 @@ gulp.task("build-js", () => {
 });
 
 
-gulp.task('build-sass', () => {
-	return gulp.src('./app/scss/style.scss')
-		.pipe(sass().on('error', sass.logError))
+gulp.task("build-sass", () => {
+	return gulp.src("./app/scss/style.scss")
+		.pipe(sass().on("error", sass.logError))
 		.pipe(gulp.dest(dist));
 });
 
-gulp.task('copy-api', () => {
-	return gulp.src('./app/api/**/*.*')
+gulp.task("copy-api", () => {
+	// Перемещение файла .htaccess
+	gulp.src("./app/api/**/.*")
+		.pipe(gulp.dest(dist + "/api"));
+	
+	return gulp.src("./app/api/**/*.*")
 		.pipe(gulp.dest(dist + "/api"));
 });
 
-gulp.task('copy-assets', () => {
-	return gulp.src('./app/assets/**/*.*')
+gulp.task("copy-assets", () => {
+	return gulp.src("./app/assets/**/*.*")
 		.pipe(gulp.dest(dist + "/assets"));
 });
 
-gulp.task('watch', () => {
-	gulp.watch('./app/src/index.html', gulp.parallel('copy-html'));
-	gulp.watch("./app/assets/**/*.*", gulp.parallel('copy-assets'));
-	gulp.watch("./app/api/**/*.*", gulp.parallel('copy-api'));
-	gulp.watch("./app/scss/**/*.scss", gulp.parallel('build-sass'));
-	gulp.watch("./app/src/**/*.js", gulp.parallel('build-js'));
+gulp.task("watch", () => {
+	gulp.watch("./app/src/index.html", gulp.parallel("copy-html"));
+	gulp.watch("./app/assets/**/*.*", gulp.parallel("copy-assets"));
+	gulp.watch("./app/api/**/*.*", gulp.parallel("copy-api"));
+	gulp.watch("./app/scss/**/*.scss", gulp.parallel("build-sass"));
+	gulp.watch("./app/src/**/*.js", gulp.parallel("build-js"));
 });
 
-gulp.task('build', gulp.parallel('copy-html', 'copy-assets', 'copy-api', 'build-sass', 'build-js'));
+gulp.task("build", gulp.parallel("copy-html", "copy-assets", "copy-api", "build-sass", "build-js"));
 
-gulp.task('default', gulp.parallel('watch', 'build'));
+gulp.task("prod", () => {
+	gulp.src("./app/src/index.html")
+		.pipe(gulp.dest(prod));
+	gulp.src("./app/api/**/.*")
+		.pipe(gulp.dest(prod + "/api"));
+	gulp.src("./app/api/**/*.*")
+		.pipe(gulp.dest(prod + "/api"));
+	gulp.src("./app/assets/**/*.*")
+		.pipe(gulp.dest(prod + "/assets"));
+	
+	gulp.src("./app/src/main.js")
+		.pipe(webpack({
+			mode: "production",
+			output: {
+				filename: "script.js"
+			},
+			module: {
+				rules: [
+					{
+						test: /\.m?js$/,
+						exclude: /(node_modules|bower_components)/,
+						use: {
+							loader: "babel-loader",
+							options: {
+								presets: [["@babel/preset-env", {
+									debug: false,
+									corejs: 3,
+									useBuiltIns: "usage"
+								}],
+									"@babel/react"]
+							}
+						}
+					}
+				]
+			}
+		}))
+		.pipe(gulp.dest(prod));
+	
+	return gulp.src("./app/scss/style.scss")
+		.pipe(sass().on("error", sass.logError))
+		.pipe(postcss([autoprefixer()]))
+		.pipe(cleanCss())
+		.pipe(gulp.dest(prod));
+});
+
+gulp.task("default", gulp.parallel("watch", "build"));
